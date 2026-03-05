@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STT WebUI</title>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>STT WebUI</h1>
+        <p class="subtitle">Speech-to-Text with Parakeet &amp; Whisper</p>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="transcribe">Transcribe</button>
+        <button class="tab" data-tab="status">Status</button>
+        <button class="tab" data-tab="docs">API Docs</button>
+      </nav>
+
+      <!-- Transcribe Tab -->
+      <section id="tab-transcribe" class="tab-content active">
+        <div class="two-col">
+          <div class="col">
+            <div class="card">
+              <h3>Record from Microphone</h3>
+              <div id="recorder-controls">
+                <button id="btn-record" class="btn btn-record">Record</button>
+                <span id="record-time" class="record-time"></span>
+              </div>
+              <audio id="audio-preview" controls hidden></audio>
+            </div>
+
+            <div class="card">
+              <h3>Or Upload Audio File</h3>
+              <input type="file" id="audio-upload" accept="audio/*" />
+            </div>
+
+            <div class="card">
+              <label for="model-select">Model</label>
+              <select id="model-select"></select>
+
+              <label for="language-input">Language (optional)</label>
+              <input
+                type="text"
+                id="language-input"
+                placeholder="e.g. en, de, ja (leave blank for auto-detect)"
+              />
+
+              <label for="format-select">Response Format</label>
+              <select id="format-select">
+                <option value="verbose_json" selected>verbose_json</option>
+                <option value="json">json</option>
+                <option value="text">text</option>
+                <option value="srt">srt</option>
+                <option value="vtt">vtt</option>
+              </select>
+
+              <p class="hint">Default &amp; recommended: <strong>parakeet-onnx-int8</strong> (~430 MB VRAM, fast, English)</p>
+              <button id="btn-transcribe" class="btn btn-primary">
+                Transcribe
+              </button>
+            </div>
+          </div>
+
+          <div class="col">
+            <div class="card">
+              <h3>Transcription</h3>
+              <textarea id="output-text" rows="10" readonly></textarea>
+            </div>
+            <div class="card">
+              <h3>Segments (timestamps)</h3>
+              <textarea id="output-segments" rows="10" readonly></textarea>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Status Tab -->
+      <section id="tab-status" class="tab-content">
+        <div id="status-container">
+          <div id="vram-bar"></div>
+          <div id="model-table"></div>
+        </div>
+        <div class="card status-controls">
+          <label for="status-model-select">Model</label>
+          <select id="status-model-select"></select>
+          <div class="btn-row">
+            <button id="btn-load" class="btn">Load Model</button>
+            <button id="btn-unload" class="btn">Unload Model</button>
+            <button id="btn-flush" class="btn btn-danger">
+              Flush All (Hard Reset VRAM)
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- API Docs Tab -->
+      <section id="tab-docs" class="tab-content">
+        <div class="card docs">
+          <h2>STT WebUI API</h2>
+          <p>
+            OpenAI-compatible Speech-to-Text HTTP API. Models are loaded
+            on-demand and unloaded after an idle TTL (<code id="docs-ttl">…</code>s)
+            to free VRAM. Multiple models can be cached simultaneously if VRAM
+            permits.
+          </p>
+          <p>
+            <strong>Base URL:</strong>
+            <code id="docs-base-url">http://&lt;host&gt;:7861</code>
+            (this page: <code id="docs-origin"></code>)
+          </p>
+          <p>
+            <strong>Auth:</strong> none. <strong>CORS:</strong> open.
+            <strong>Audio formats:</strong> wav, mp3, flac, ogg, m4a, webm
+            (anything ffmpeg can decode). Internally resampled to 16 kHz mono.
+          </p>
+
+          <h3>Available Models</h3>
+          <div id="docs-model-list"></div>
+
+          <h3>POST /v1/audio/transcriptions</h3>
+          <p>
+            Transcribe an audio file. OpenAI-compatible (drop-in for
+            <code>openai.audio.transcriptions.create</code>). <code>multipart/form-data</code>.
+          </p>
+          <table class="docs-table">
+            <thead>
+              <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>file</code></td><td>file</td><td>yes</td><td>Audio file upload</td></tr>
+              <tr><td><code>model</code></td><td>string</td><td>no</td><td>Model id (see list above). Default <code>whisper-turbo</code>. Alias <code>whisper-1</code> maps to <code>whisper-turbo</code>.</td></tr>
+              <tr><td><code>language</code></td><td>string</td><td>no</td><td>ISO code hint (<code>en</code>, <code>de</code>, …). Whisper auto-detects if omitted; Parakeet ignores this.</td></tr>
+              <tr><td><code>response_format</code></td><td>string</td><td>no</td><td>One of <code>json</code> (default), <code>verbose_json</code>, <code>text</code>, <code>srt</code>, <code>vtt</code>.</td></tr>
+            </tbody>
+          </table>
+
+          <h4>Response — <code>json</code></h4>
+<pre><code>{ "text": "Hello world." }</code></pre>
+
+          <h4>Response — <code>verbose_json</code></h4>
+<pre><code>{
+  "text": "Hello world.",
+  "language": "en",
+  "duration": 2.34,
+  "segments": [
+    { "id": 0, "start": 0.0, "end": 2.34, "text": "Hello world." }
+  ]
+}</code></pre>
+
+          <h4>Response — <code>text</code> / <code>srt</code> / <code>vtt</code></h4>
+          <p>Plain text body (<code>text/plain</code>). <code>srt</code>/<code>vtt</code> are subtitle formats with timestamped segments.</p>
+
+          <h4>Example — curl</h4>
+<pre><code>curl -X POST <span class="docs-host">http://&lt;host&gt;:7861</span>/v1/audio/transcriptions \
+  -F "file=@audio.wav" \
+  -F "model=parakeet-onnx-int8" \
+  -F "response_format=verbose_json"</code></pre>
+
+          <h4>Example — Python (OpenAI SDK)</h4>
+<pre><code>from openai import OpenAI
+client = OpenAI(base_url="<span class="docs-host">http://&lt;host&gt;:7861</span>/v1", api_key="not-needed")
+with open("audio.wav", "rb") as f:
+    r = client.audio.transcriptions.create(model="whisper-turbo", file=f)
+print(r.text)</code></pre>
+
+          <h3>GET /v1/models</h3>
+          <p>OpenAI-compatible model listing. Returns <code>{"object":"list","data":[{"id","object","owned_by","description"}, …]}</code>.</p>
+
+          <h3>GET /v1/status</h3>
+          <p>Per-model load state, idle/TTL countdown, and VRAM usage. Useful for observability and pre-warming decisions.</p>
+<pre><code>{
+  "ttl_seconds": 300,
+  "models": {
+    "parakeet-onnx-int8": { "status": "loaded", "idle_seconds": 12, "ttl_remaining": 288, "ttl_total": 300 },
+    "whisper-turbo": { "status": "unloaded" }
+  },
+  "vram": { "total_mb": 24564, "allocated_mb": 432, "reserved_mb": 512 }
+}</code></pre>
+
+          <h3>POST /v1/models/{name}/load</h3>
+          <p>Pre-load a model into VRAM (blocking until ready). Use to avoid first-request latency.</p>
+
+          <h3>POST /v1/models/{name}/unload</h3>
+          <p>Unload a single model and free its VRAM.</p>
+
+          <h3>POST /v1/models/flush</h3>
+          <p>Hard reset: unload <em>all</em> models, run GC, empty the CUDA cache, and IPC-collect. Use when VRAM looks stuck.</p>
+
+          <h3>Error format</h3>
+          <p>Standard FastAPI errors: <code>{"detail": "..."}</code> with HTTP 4xx/5xx. Unknown model → 400. Internal failure → 500.</p>
+
+          <h3>Notes for agents</h3>
+          <ul>
+            <li>First request to an unloaded model blocks on load (Parakeet NeMo: ~10s, ONNX: ~5s, Whisper: ~5s on warm cache, longer on cold HF download).</li>
+            <li>If you plan back-to-back requests, hit <code>/v1/models/{name}/load</code> first; subsequent <code>/v1/audio/transcriptions</code> calls reuse the cached model and reset its TTL.</li>
+            <li>Parakeet models are English-leaning and ignore the <code>language</code> field; pick Whisper for non-English or auto-detect.</li>
+            <li><code>parakeet-onnx-int8</code> is the lightest (~432 MB VRAM); <code>parakeet</code> (NeMo) is heaviest but most accurate; <code>whisper-turbo</code> is the multilingual choice.</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

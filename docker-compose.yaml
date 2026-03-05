@@ -1,0 +1,42 @@
+services:
+  stt-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: stt-webui-api
+    ports:
+      - "${STT_BACKEND_PORT:-8882}:8882"
+    volumes:
+      - ~/.cache/huggingface:/root/.cache/huggingface
+    environment:
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - MODEL_TTL_SECONDS=${MODEL_TTL_SECONDS:-300}
+      - UPLOAD_DIR=${UPLOAD_DIR:-/tmp/stt-uploads}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8882/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  stt-frontend:
+    build: ./frontend
+    container_name: stt-webui-ui
+    ports:
+      - "${STT_FRONTEND_PORT:-7861}:7861"
+    depends_on:
+      - stt-backend
+    restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
