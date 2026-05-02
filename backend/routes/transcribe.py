@@ -11,8 +11,8 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse
 from fastapi.concurrency import run_in_threadpool
 
-from config import MODEL_CONFIGS, OPENAI_MODEL_MAP, RESPONSE_FORMATS, UPLOAD_DIR
-from model_manager import get_model
+from config import MODEL_CONFIGS, OPENAI_MODEL_MAP, RESPONSE_FORMATS, UPLOAD_DIR, UNLOAD_AFTER_USE_MODELS
+from model_manager import get_model, unload_model
 from format_utils import segments_to_srt, segments_to_vtt
 
 logger = logging.getLogger(__name__)
@@ -197,6 +197,9 @@ async def transcribe(
     finally:
         if os.path.exists(tmp.name):
             os.unlink(tmp.name)
+        if resolved_model in UNLOAD_AFTER_USE_MODELS:
+            logger.info("Unloading %s after transcription", resolved_model)
+            await run_in_threadpool(unload_model, resolved_model)
 
 
 @router.get("/")

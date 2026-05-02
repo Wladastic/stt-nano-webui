@@ -43,3 +43,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Supported response formats
 RESPONSE_FORMATS = {"json", "verbose_json", "text", "srt", "vtt"}
+
+# Comma-separated model ids to unload immediately after each transcription.
+UNLOAD_AFTER_USE_MODELS = {
+    item.strip()
+    for item in os.getenv("UNLOAD_AFTER_USE_MODELS", "whisper-turbo").split(",")
+    if item.strip()
+}

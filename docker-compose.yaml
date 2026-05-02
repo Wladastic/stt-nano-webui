@@ -12,6 +12,7 @@ services:
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
       - MODEL_TTL_SECONDS=${MODEL_TTL_SECONDS:-300}
       - UPLOAD_DIR=${UPLOAD_DIR:-/tmp/stt-uploads}
+      - UNLOAD_AFTER_USE_MODELS=${UNLOAD_AFTER_USE_MODELS:-whisper-turbo}
     deploy:
       resources:
         reservations:
