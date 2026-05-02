@@ -9,6 +9,7 @@ import subprocess
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.concurrency import run_in_threadpool
 
 from config import MODEL_CONFIGS, OPENAI_MODEL_MAP, RESPONSE_FORMATS, UPLOAD_DIR
 from model_manager import get_model
@@ -180,16 +181,17 @@ async def transcribe(
         tmp.flush()
         tmp.close()
 
-        # Load model and transcribe
+        # Load model and transcribe outside the async event loop so /v1/status
+        # remains responsive during long model loads or transcription calls.
         config = MODEL_CONFIGS[resolved_model]
-        loaded_model = get_model(resolved_model)
+        loaded_model = await run_in_threadpool(get_model, resolved_model)
 
         if config["backend"] == "nemo":
-            result = _transcribe_nemo(loaded_model, tmp.name, language)
+            result = await run_in_threadpool(_transcribe_nemo, loaded_model, tmp.name, language)
         elif config["backend"] == "onnx":
-            result = _transcribe_onnx(loaded_model, tmp.name, language)
+            result = await run_in_threadpool(_transcribe_onnx, loaded_model, tmp.name, language)
         else:
-            result = _transcribe_whisper(loaded_model, tmp.name, language)
+            result = await run_in_threadpool(_transcribe_whisper, loaded_model, tmp.name, language)
 
         return _format_response(result, response_format)
     finally:

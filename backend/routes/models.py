@@ -6,6 +6,7 @@ import time
 
 import torch
 from fastapi import APIRouter, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
 import model_manager
 from config import MODEL_CONFIGS, OPENAI_MODEL_MAP, MODEL_TTL_SECONDS
@@ -45,7 +46,7 @@ async def model_status():
     for name in MODEL_CONFIGS:
         models[name] = {"status": "unloaded"}
 
-    for name in model_manager._model_cache:
+    for name in list(model_manager._model_cache):
         last_used = model_manager._model_last_used.get(name, now)
         idle = now - last_used
         models[name] = {
@@ -55,7 +56,7 @@ async def model_status():
             "ttl_total": MODEL_TTL_SECONDS,
         }
 
-    for name in model_manager._loading_in_progress:
+    for name in list(model_manager._loading_in_progress):
         if name not in models or models[name]["status"] == "unloaded":
             models[name] = {"status": "loading"}
 
@@ -74,7 +75,7 @@ async def model_status():
 @router.post("/v1/models/flush")
 async def flush_all():
     """Hard flush: unload all models and aggressively clear VRAM."""
-    unloaded = model_manager.flush_all()
+    unloaded = await run_in_threadpool(model_manager.flush_all)
     vram = {}
     if torch.cuda.is_available():
         vram = {
@@ -89,13 +90,13 @@ async def load_model(name: str):
     """Manually load a model."""
     if name not in MODEL_CONFIGS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {name}")
-    model_manager.get_model(name)
+    await run_in_threadpool(model_manager.get_model, name)
     return {"status": "loaded", "model": name}
 
 
 @router.post("/v1/models/{name}/unload")
 async def unload_model(name: str):
     """Manually unload a model."""
-    if model_manager.unload_model(name):
+    if await run_in_threadpool(model_manager.unload_model, name):
         return {"status": "unloaded", "model": name}
     return {"status": "already_unloaded", "model": name}
