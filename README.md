@@ -1,4 +1,4 @@
-# Parakeet Whisper STT Nano WebUI
+# Parakeet-v3 & Whisper-Turbo STT Nano WebUI
 
 A local, VRAM-efficient speech-to-text WebUI and API built around NVIDIA
 Parakeet v3 and Whisper Large v3 Turbo.
@@ -7,6 +7,10 @@ I built this to use with my AI Agents to talk to them and expect a fast response
 Works well with Openclaw and Openwebui.
 
 The rest of the readme is Vibe-Coded, I only fixed what I found, like the Ram usage, if anything is off, create an Issue for that, or better, create a Pull Request and I will review it.
+
+The Parakeet model is being pulled from:
+https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx
+Thanks for your work, istupanov!
 
 The backend exposes an OpenAI-style transcription endpoint, so local tools,
 agents, and OpenWebUI-style setups can send audio to
