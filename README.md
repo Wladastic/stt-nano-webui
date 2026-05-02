@@ -1,24 +1,43 @@
-# Parakeet Whisper STT WebUI
+# Parakeet Whisper STT Nano WebUI
 
-Parakeet Whisper STT WebUI is a local, VRAM-efficient speech-to-text application with a browser UI and a FastAPI backend. The API is intentionally close to OpenAI's audio transcription API, so agents and scripts can send `multipart/form-data` requests to `/v1/audio/transcriptions` and receive plain text, JSON, verbose JSON, SRT, or WebVTT.
+A local, VRAM-efficient speech-to-text WebUI and API built around NVIDIA
+Parakeet v3 and Whisper Large v3 Turbo.
+I built this to use with my AI Agents to talk to them and expect a fast response.
 
-The project is designed to pair well with local voice/LLM stacks such as OpenWebUI and the companion OmniVoice TTS WebUI. It exposes an OpenAI-style transcription endpoint while keeping model loading on demand and unloading idle models with a TTL.
+Works well with Openclaw and Openwebui.
 
-The backend supports multiple model backends:
+The rest of the readme is Vibe-Coded, I only fixed what I found, like the Ram usage, if anything is off, create an Issue for that, or better, create a Pull Request and I will review it.
 
-| Model | Backend | VRAM | Notes |
+The backend exposes an OpenAI-style transcription endpoint, so local tools,
+agents, and OpenWebUI-style setups can send audio to
+`/v1/audio/transcriptions` and receive `json`, `verbose_json`, `text`, `srt`,
+or `vtt` responses.
+Parakeet v3 is returning 0.0 timestamps though, if you need accurate timestamps, use the `whisper-turbo` model.
+
+## Highlights
+
+- Browser WebUI for recording, uploading, transcribing, and inspecting model state
+- FastAPI backend with OpenAI-compatible transcription shape
+- Lightweight default model: `parakeet-onnx-int8`
+- Optional full ONNX, NeMo Parakeet, and Whisper Turbo backends
+- Model load/unload controls and automatic TTL cleanup
+- CUDA VRAM status endpoint
+- Docker Compose setup with persistent Hugging Face cache
+
+## Models
+
+| Model | Backend | Typical VRAM | Best For |
 | --- | --- | --- | --- |
-| `parakeet-onnx-int8` | onnx-asr | ~430 MB | **Default. Recommended for most use.** Fast, lightweight int8-quantized ONNX. English only. |
-| `parakeet-onnx` | onnx-asr | ~900 MB | Full-precision ONNX variant. English only. |
-| `parakeet` | NeMo | ~2.5 GB | NeMo native. Most accurate for English. Higher VRAM. |
-| `whisper-turbo` | transformers | ~3 GB | OpenAI Whisper Large v3 Turbo. Best choice for non-English or auto-detect. |
-| `whisper-1` | — | — | OpenAI-compatible alias for `whisper-turbo`. |
+| `parakeet-onnx-int8` | ONNX int8 | ~800 MB | Default, fast and accurate with low VRAM use |
+| `parakeet-onnx` | ONNX | ~1600 MB | Pedantic usage |
+| `parakeet` | NeMo | ~2.5 GB | Most accurate Parakeet path, higher VRAM |
+| `whisper-turbo` | Transformers | ~3 GB | Multilingual and auto-detect transcription |
+| `whisper-1` | Alias | same as `whisper-turbo` | OpenAI-compatible model name |
 
 ## Quick Start
 
-Start both services with Docker Compose:
-
 ```bash
+cp .env-example .env
 docker compose up --build
 ```
 
@@ -29,51 +48,42 @@ Default URLs:
 - FastAPI docs: `http://localhost:8882/docs`
 - OpenAPI schema: `http://localhost:8882/openapi.json`
 
-The frontend container serves the WebUI with nginx and proxies `/v1/*` API calls to the backend. If an agent is running outside Docker, use the backend directly at `http://localhost:8882`.
+The frontend container serves static files with nginx and proxies `/v1/*` to the
+backend container. External clients can call the backend directly at
+`http://localhost:8882`.
 
 ## Configuration
 
-Copy the public example to a private local `.env` file:
+Copy `.env-example` to `.env` and adjust local settings there. `.env` is ignored
+by git.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `STT_BACKEND_PORT` | `8882` | Host port for the transcription API |
+| `STT_FRONTEND_PORT` | `7861` | Host port for the WebUI |
+| `CUDA_VISIBLE_DEVICES` | `0` | GPU visible to the backend container |
+| `MODEL_TTL_SECONDS` | `300` | Idle seconds before loaded models unload |
+| `UPLOAD_DIR` | `/tmp/stt-uploads` | Temporary upload directory in the backend container |
+| `API_URL` | `http://localhost:8882` | Vite dev/preview proxy target; production Docker uses nginx |
+
+Docker Compose mounts `~/.cache/huggingface` into the backend container so model
+weights persist across restarts.
+
+## API Usage
+
+Health check:
 
 ```bash
-cp .env-example .env
+curl http://localhost:8882/
 ```
 
-`.env` is ignored by git. Common variables:
+List models:
 
-- `STT_BACKEND_PORT`: host port for the transcription API
-- `STT_FRONTEND_PORT`: host port for the browser UI
-- `CUDA_VISIBLE_DEVICES`: GPU selection for Docker
-- `MODEL_TTL_SECONDS`: unload idle models after this many seconds
-- `UPLOAD_DIR`: temporary upload directory inside the backend container
-- `API_URL`: frontend dev/preview proxy target; production Docker uses nginx
-
-## OpenWebUI / Companion Usage
-
-Use the backend as an OpenAI-compatible transcription service at:
-
-```text
-http://localhost:8882/v1/audio/transcriptions
+```bash
+curl http://localhost:8882/v1/models
 ```
 
-For a lightweight default, use `parakeet-onnx-int8`. For multilingual or
-auto-detect transcription, use `whisper-turbo` or the OpenAI-compatible alias
-`whisper-1`.
-
-This repo can run alongside the OmniVoice TTS WebUI: STT lives here, TTS and
-voice cloning live in the OmniVoice repo.
-
-## Agent Usage
-
-An AI agent should use the API in this order:
-
-1. Check availability with `GET /`.
-2. Discover valid model IDs with `GET /v1/models`.
-3. Optionally inspect model load state and GPU memory with `GET /v1/status`.
-4. Send audio to `POST /v1/audio/transcriptions`.
-5. Use `POST /v1/models/flush` only when it needs to reclaim all model memory.
-
-Minimal transcription request (uses default model `parakeet-onnx-int8`):
+Transcribe with the default low-VRAM model:
 
 ```bash
 curl -s http://localhost:8882/v1/audio/transcriptions \
@@ -81,382 +91,97 @@ curl -s http://localhost:8882/v1/audio/transcriptions \
   -F response_format=verbose_json
 ```
 
-With an explicit model:
+Transcribe with Whisper Turbo through the OpenAI-compatible alias:
 
 ```bash
 curl -s http://localhost:8882/v1/audio/transcriptions \
   -F file=@audio.wav \
-  -F model=parakeet-onnx-int8 \
-  -F response_format=verbose_json
+  -F model=whisper-1 \
+  -F response_format=json
 ```
 
-OpenAI-compatible alias:
-
-```bash
-curl -s http://localhost:8882/v1/audio/transcriptions \
-  -F file=@audio.wav \
-  -F model=whisper-1
-```
-
-Python example:
-
-```python
-import requests
-
-base_url = "http://localhost:8882"
-
-with open("audio.wav", "rb") as audio:
-    response = requests.post(
-        f"{base_url}/v1/audio/transcriptions",
-        files={"file": ("audio.wav", audio, "audio/wav")},
-        data={
-            "model": "parakeet-onnx-int8",
-            "language": "en",
-            "response_format": "verbose_json",
-        },
-        timeout=600,
-    )
-
-response.raise_for_status()
-print(response.json()["text"])
-```
-
-JavaScript example:
-
-```js
-const form = new FormData();
-form.append("file", audioFile);
-form.append("model", "parakeet-onnx-int8");
-form.append("response_format", "json");
-
-const response = await fetch("http://localhost:8882/v1/audio/transcriptions", {
-  method: "POST",
-  body: form,
-});
-
-if (!response.ok) {
-  throw new Error(await response.text());
-}
-
-const result = await response.json();
-console.log(result.text);
-```
-
-## API Reference
-
-### `GET /`
-
-Health check.
-
-Response:
-
-```json
-{
-  "status": "ok",
-  "service": "stt-webui"
-}
-```
-
-### `GET /v1/models`
-
-List available model IDs. This endpoint follows the OpenAI model-list shape.
-
-Response:
-
-```json
-{
-  "object": "list",
-  "data": [
-    {
-      "id": "whisper-turbo",
-      "object": "model",
-      "owned_by": "whisper",
-      "description": "OpenAI Whisper Large v3 Turbo"
-    },
-    {
-      "id": "whisper-1",
-      "object": "model",
-      "owned_by": "openai",
-      "description": "Alias for whisper-turbo"
-    }
-  ]
-}
-```
-
-Agents should use `id` values from this response as the `model` form field. The frontend hides alias entries, but the API accepts aliases.
-
-### `POST /v1/audio/transcriptions`
-
-Transcribe an uploaded audio file.
-
-Content type: `multipart/form-data`
-
-Fields:
+Supported form fields for `POST /v1/audio/transcriptions`:
 
 | Field | Required | Default | Description |
 | --- | --- | --- | --- |
-| `file` | yes | none | Audio upload. Browser recordings are sent as `recording.webm`; uploaded files may be any ffmpeg-readable audio format. |
-| `model` | no | `parakeet-onnx-int8` | Model ID or alias. Use `GET /v1/models` to discover valid values. |
-| `language` | no | backend-specific | Optional language hint such as `en`, `de`, or `ja`. Whisper receives this as a generation hint. Parakeet and ONNX currently do not use it for decoding, but include it or a backend default in verbose output. |
-| `response_format` | no | `json` | One of `json`, `verbose_json`, `text`, `srt`, or `vtt`. |
-
-Supported response formats:
-
-`json`:
-
-```json
-{
-  "text": "Transcribed speech."
-}
-```
-
-`verbose_json`:
-
-```json
-{
-  "text": "Transcribed speech.",
-  "language": "en",
-  "duration": 12.34,
-  "segments": [
-    {
-      "id": 0,
-      "start": 0.0,
-      "end": 2.5,
-      "text": "Transcribed speech."
-    }
-  ]
-}
-```
-
-`text`:
-
-```text
-Transcribed speech.
-```
-
-`srt`:
-
-```text
-1
-00:00:00,000 --> 00:00:02,500
-Transcribed speech.
-```
-
-`vtt`:
-
-```text
-WEBVTT
-
-00:00:00.000 --> 00:00:02.500
-Transcribed speech.
-```
+| `file` | yes | none | Audio upload; any ffmpeg-readable format for Parakeet/ONNX |
+| `model` | no | `parakeet-onnx-int8` | Model id or alias from `GET /v1/models` |
+| `language` | no | backend-specific | Optional hint such as `en`, `de`, or `ja`; mainly useful for Whisper |
+| `response_format` | no | `json` | `json`, `verbose_json`, `text`, `srt`, or `vtt` |
 
 OpenAI compatibility notes:
 
-- The endpoint path and core fields are OpenAI-compatible.
-- `model`, `language`, and `response_format` are supported.
-- Parameters such as `prompt`, `temperature`, `timestamp_granularities`, and translation endpoints are not implemented.
-- There is no authentication layer in this project.
+- Endpoint path and core multipart fields match OpenAI-style transcription use.
+- `whisper-1` is accepted as an alias for `whisper-turbo`.
+- Authentication is not implemented.
+- Translation endpoints and advanced OpenAI parameters such as `prompt`,
+  `temperature`, and `timestamp_granularities` are not implemented.
 - CORS is open on the backend.
 
-Audio handling:
+## Model Management
 
-- NeMo Parakeet and ONNX Parakeet inputs are converted to 16 kHz mono WAV with `ffmpeg`.
-- Whisper uses the `transformers` audio pipeline directly.
-- Temporary uploaded files are written to `UPLOAD_DIR` and removed after each request.
-- The nginx frontend proxy allows request bodies up to `100m`.
+The backend loads models on demand and unloads idle models after
+`MODEL_TTL_SECONDS`.
 
-Error responses:
+Useful endpoints:
 
-- Unknown model: HTTP `400`
-- Unsupported `response_format`: HTTP `400`
-- Invalid or unconvertible audio for Parakeet/ONNX conversion: HTTP `400`
-- Model download/load failures may return HTTP `500`
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /v1/status` | Model cache state, TTL countdowns, and CUDA VRAM usage |
+| `POST /v1/models/{name}/load` | Load one model before transcription |
+| `POST /v1/models/{name}/unload` | Unload one model |
+| `POST /v1/models/flush` | Unload all models and clear CUDA memory |
 
-Example error body:
-
-```json
-{
-  "detail": "Invalid response_format: xml. Supported: {'json', 'verbose_json', 'text', 'srt', 'vtt'}"
-}
-```
-
-### `GET /v1/status`
-
-Return model load state, model TTL countdowns, and CUDA VRAM usage when CUDA is available.
-
-Response:
-
-```json
-{
-  "ttl_seconds": 300,
-  "models": {
-    "whisper-turbo": {
-      "status": "loaded",
-      "idle_seconds": 14,
-      "ttl_remaining": 286,
-      "ttl_total": 300
-    },
-    "parakeet": {
-      "status": "unloaded"
-    }
-  },
-  "vram": {
-    "total_mb": 24564,
-    "allocated_mb": 5120,
-    "reserved_mb": 6144
-  }
-}
-```
-
-Possible model statuses:
-
-- `unloaded`: model is not in memory
-- `loading`: background loading has been started
-- `loaded`: model is cached and ready
-
-The status tab in the WebUI polls this endpoint every 5 seconds.
-
-### `POST /v1/models/{name}/load`
-
-Load a model into memory before transcription.
-
-Example:
-
-```bash
-curl -X POST http://localhost:8882/v1/models/whisper-turbo/load
-```
-
-Response:
-
-```json
-{
-  "status": "loaded",
-  "model": "whisper-turbo"
-}
-```
-
-This request blocks until the model is loaded. First load may take a long time because weights can be downloaded from Hugging Face.
-
-### `POST /v1/models/{name}/unload`
-
-Unload one model.
-
-Example:
-
-```bash
-curl -X POST http://localhost:8882/v1/models/whisper-turbo/unload
-```
-
-Response when loaded:
-
-```json
-{
-  "status": "unloaded",
-  "model": "whisper-turbo"
-}
-```
-
-Response when it was already unloaded:
-
-```json
-{
-  "status": "already_unloaded",
-  "model": "whisper-turbo"
-}
-```
-
-### `POST /v1/models/flush`
-
-Unload all cached models and aggressively clear CUDA memory.
-
-Example:
+Flush all models before switching workloads:
 
 ```bash
 curl -X POST http://localhost:8882/v1/models/flush
 ```
 
-Response:
+## OpenWebUI And Companion Use
 
-```json
-{
-  "status": "flushed",
-  "unloaded": ["whisper-turbo"],
-  "vram_after": {
-    "allocated_mb": 0,
-    "reserved_mb": 0
-  }
-}
+Use this repo as the local STT side of a voice stack:
+
+```text
+http://localhost:8882/v1/audio/transcriptions
 ```
 
-Use this when an agent needs to release VRAM before switching workloads or recovering from memory pressure.
+It pairs with the OmniVoice TTS Nano WebUI repo: this project handles
+speech-to-text, while OmniVoice handles TTS, voice cloning, and voice design.
 
-## WebUI Behavior
+## WebUI
 
-The browser UI has two tabs:
+The WebUI has two main areas:
 
-- Transcribe: record microphone audio or upload an audio file, choose a model, optionally set language, choose response format, and display the result.
-- Status: inspect VRAM and model TTL state, load a model, unload a model, or flush all models.
-
-Important frontend details:
-
-- Browser recordings use `MediaRecorder` and are submitted as `recording.webm`.
-- Uploaded files are sent directly as the `file` form field.
-- The WebUI sends requests to relative `/v1/*` paths. In Docker, nginx proxies those requests to the backend service.
-- When `response_format` is `text`, `srt`, or `vtt`, the UI reads the response as text.
-- When `response_format` is `json` or `verbose_json`, the UI reads JSON and displays `text`.
-- For `verbose_json`, timestamp segments are also rendered in the Segments box.
-
-## Configuration
-
-Environment variables:
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `MODEL_TTL_SECONDS` | `300` | Idle seconds before loaded models are automatically unloaded. |
-| `UPLOAD_DIR` | `/tmp/stt-uploads` | Directory for temporary uploaded audio files. Created on startup. |
-| `CUDA_VISIBLE_DEVICES` | set in `docker-compose.yaml` to `0` | Selects the GPU visible to the backend container. |
-
-Docker Compose mounts `~/.cache/huggingface` into the backend container at `/root/.cache/huggingface` so downloaded model weights persist across restarts.
-
-## Operational Notes
-
-- Models load on demand. The first transcription with a model may be slow.
-- A background cleanup task checks idle models every 60 seconds and unloads models whose TTL expired.
-- Manual load/unload and transcription share the same in-process model cache.
-- The backend uses CUDA when `torch.cuda.is_available()`; otherwise it runs on CPU.
-- `ffmpeg` is required for Parakeet/ONNX audio conversion and is installed in the backend Docker image.
-- The backend has no request queue. Agents should avoid launching many large transcription requests at the same time unless the host has enough CPU, RAM, and VRAM.
+- Transcribe: record microphone audio or upload a file, choose a model, set an
+  optional language hint, choose response format, and view the output.
+- Status: inspect loaded models, VRAM usage, TTL state, and manually load,
+  unload, or flush models.
 
 ## Project Layout
 
 ```text
 backend/
-  serve.py              FastAPI app, CORS, router registration, TTL cleanup startup
-  config.py             model registry, aliases, response formats, environment config
+  serve.py              FastAPI app and router registration
+  config.py             model registry, aliases, response formats, env config
   model_manager.py      model loading, cache, unload, flush, TTL cleanup
   routes/transcribe.py  transcription endpoint and response formatting
   routes/models.py      model list, status, load, unload, flush endpoints
-  format_utils.py       SRT and WebVTT formatting helpers
+  format_utils.py       SRT and WebVTT helpers
   schemas.py            Pydantic response models
 frontend/
-  index.html            WebUI structure
-  src/main.ts           tab and module initialization
-  src/recorder.ts       microphone recording
-  src/transcribe.ts     transcription form submission and response rendering
-  src/status.ts         model/status polling and controls
+  index.html            WebUI shell
+  src/                  TypeScript UI modules
   nginx.conf            static frontend server and /v1 reverse proxy
 docker-compose.yaml     backend and frontend services
 ```
 
-## Adding Models
+## Notes
 
-To add a model, update `MODEL_CONFIGS` in `backend/config.py` with a new key and backend configuration. The current loader supports these backend values:
-
-- `transformers`: loaded by `_load_whisper`
-- `nemo`: loaded by `_load_parakeet`
-- `onnx`: loaded by `_load_parakeet_onnx`
-
-If the new model should have an OpenAI-compatible alias, add it to `OPENAI_MODEL_MAP`.
-
-After changing model configuration, restart the backend. The frontend model selectors are populated from `GET /v1/models`, so non-alias model IDs appear automatically.
+- The first transcription with a model may take time because weights are loaded
+  or downloaded from Hugging Face.
+- Parakeet and ONNX inputs are converted to 16 kHz mono WAV with `ffmpeg`.
+- Whisper uses the Transformers audio pipeline directly.
+- Temporary uploads are removed after each request.
+- The backend has no authentication layer; keep it behind trusted local network
+  boundaries unless you add your own access control.
