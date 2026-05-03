@@ -65,8 +65,18 @@
 
           <div class="col">
             <div class="card">
-              <h3>Transcription</h3>
-              <textarea id="output-text" rows="10" readonly></textarea>
+              <div class="card-title-row">
+                <h3>Transcription</h3>
+                <button id="btn-copy-transcription" class="btn btn-small" type="button">
+                  Copy
+                </button>
+              </div>
+              <textarea
+                id="output-text"
+                rows="10"
+                spellcheck="true"
+                placeholder="Transcribed text will appear here and can be edited."
+              ></textarea>
             </div>
             <div class="card">
               <h3>Segments (timestamps)</h3>

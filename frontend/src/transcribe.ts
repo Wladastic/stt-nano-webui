@@ -5,7 +5,37 @@ const $ = <T extends HTMLElement>(id: string) =>
 
 export function initTranscribe(): void {
   const btn = $<HTMLButtonElement>("btn-transcribe");
+  const copyBtn = $<HTMLButtonElement>("btn-copy-transcription");
   btn.addEventListener("click", run);
+  copyBtn.addEventListener("click", copyTranscription);
+}
+
+async function copyTranscription(): Promise<void> {
+  const copyBtn = $<HTMLButtonElement>("btn-copy-transcription");
+  const outputText = $<HTMLTextAreaElement>("output-text");
+  const text = outputText.value;
+
+  if (!text) {
+    copyBtn.textContent = "Nothing to copy";
+    window.setTimeout(() => {
+      copyBtn.textContent = "Copy";
+    }, 1200);
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(text);
+    copyBtn.textContent = "Copied";
+  } catch {
+    outputText.focus();
+    outputText.select();
+    document.execCommand("copy");
+    copyBtn.textContent = "Copied";
+  }
+
+  window.setTimeout(() => {
+    copyBtn.textContent = "Copy";
+  }, 1200);
 }
 
 async function run(): Promise<void> {
