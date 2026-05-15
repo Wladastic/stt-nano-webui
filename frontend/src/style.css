@@ -194,6 +194,22 @@ audio {
   background: #5a52d5;
 }
 
+.quick-record-card {
+  padding: 0;
+  background: transparent;
+}
+
+.btn-quick-record {
+  min-height: 3.25rem;
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.btn-quick-record.recording {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
 .btn-danger {
   background: #c0392b;
   border-color: #c0392b;
